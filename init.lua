@@ -47,6 +47,17 @@ local xml = [=[ <!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspe
   <node name='another_child_of_sample_object'/>
 </node>]=]
 
+
+--------------
+--  OBJECT  --
+--------------
+--[[
+local function create_object()
+    local obj = {}
+    
+    return obj
+end]]
+
 --------------
 --  LOGIC   --
 --------------
@@ -70,55 +81,23 @@ local methods = {
   end,
 }
 
+local barVal = "foo"
 
 -- This table contain all peoperties getter
-
+local property_get = {
+    Bar = function()
+        return barVal
+    end
+}
 
 -- This table contain all peoperties setter
 
+local property_set = {
+    Bar = function(value)
+        barVal = value
+    end
+}
 
---------------
--- GVARIANT --
---------------
-
--- Having it properly typed would be too easy!
--- We need to do this ourself
-
--- local gvar_to_lua = {
---     i = function(v) return v:get_int32   () end,
---     b = function(v) return v:get_gboolean() end,
---     y = function(v) return v:get_guchar  () end,
---     n = function(v) return v:get_gint16  () end,
---     q = function(v) return v:get_guint16 () end,
---     u = function(v) return v:get_guint32 () end,
---     x = function(v) return v:get_gint64  () end,
---     t = function(v) return v:get_guint64 () end,
---     h = function(v) return v:get_gint32  () end,
---     d = function(v) return v:get_gdouble () end,
--- }
--- 
--- local function parse_gvariant(gvariant)
---   if gvariant:get_type():is_array() then
---     local ret = {}
---     for i=1,#gvariant do
---         local key,value = gvariant[i][1],gvariant[i][2]
---         if type(value) == "userdata" then
---             value = parse_gvariant(value)
---         end
---         ret[key] = value
---     end
---     return ret
---   elseif gvariant:get_type():is_tuple() then
---     local ret = {}
---     for i = 1,#gvariant do
---       local new_gvar = gvariant:get_child_value(i-1)
---       ret[#ret+1] = parse_gvariant(new_gvar)
---     end
---     return ret
---   elseif gvariant:get_type():is_basic() and gvar_to_lua[gvariant.type] then
---     return gvar_to_lua[gvariant.type](gvariant)
---   end
--- end
 
 local introspection_data = nil
 
@@ -133,25 +112,43 @@ local function iface_lookup(name)
     return ifaces[name]
 end
 
--- Get a method "out" signature
-local ret_sigs = {}
-local function get_method_info(interface_name,method)
-    if not ret_sigs[interface_name] then
-        ret_sigs[interface_name] = {}
+-- Get a method information
+
+local function common_get_info(cache,interface_name,method,func)
+    if not cache[interface_name] then
+        cache[interface_name] = {}
     end
-    local iface_sigs = ret_sigs[interface_name]
+    local iface_sigs = cache[interface_name]
 
     if not iface_sigs[method] then
         local iface = iface_lookup(interface_name)
         if iface then
-            local method_info = iface:lookup_method(method)
-            if method_info then
-                iface_sigs[method] = method_info
+            local info = iface[func](iface,method)
+            if info then
+                iface_sigs[method] = info
+                return info
             end
         end
     end
     return iface_sigs[method]
 end
+
+local function get_property_info(interface_name,property)
+    local prop_info = {}
+    return common_get_info(prop_info,interface_name,property,"lookup_property")
+end
+
+local function get_method_info(interface_name,method)
+    local method_info = {}
+    return common_get_info(method_info,interface_name,method,"lookup_method")
+end
+
+local function get_signal_info(interface_name,signal)
+    local sign_info = {}
+    return common_get_info(sign_info,interface_name,signal,"lookup_signal")
+end
+
+
 
 -- Get a method output signature
 local function get_out_signature(interface_name,method)
@@ -176,7 +173,6 @@ end
 -- This closure dispatch the calls to the right function
 local method_call_guard, method_call_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc ,
   function(conn, sender, path, interface_name,method_name,parameters,invok)
-  print("A method have been called")
   if methods[method_name] then
     local rets = {methods[method_name](unpack(parameters.value))}
     local out_sig = get_out_signature(interface_name,method_name)
@@ -187,13 +183,17 @@ local method_call_guard, method_call_addr = core.marshal.callback(Gio.DBusInterf
 end)
 
 -- Called when there is a property request (get the current value)
-local property_get_guard, property_get_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc , 
-  function(conn, sender, path, interface_name,method_name,parameters)
-  print("Get a property")
+local property_get_guard, property_get_addr = core.marshal.callback(Gio.DBusInterfaceGetPropertyFunc , 
+  function(conn, sender, path, interface_name,property_name,parameters,error)
+    local sig = get_property_info(interface_name,property_name).signature
+    if property_get[property_name] then
+        return GLib.Variant(sig,property_get[property_name]())
+    end
+    return GLib.Variant(sig)
 end)
 
 -- Called when there is a property request (set the current value)
-local property_set_guard, property_set_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc , 
+local property_set_guard, property_set_addr = core.marshal.callback(Gio.DBusInterfaceSetPropertyFunc , 
   function(conn, sender, path, interface_name,method_name,parameters)
   print("Set a property")
 end)
@@ -247,6 +247,7 @@ local owner_id = Gio.bus_own_name(Gio.BusType.SESSION,
 )
 
 -- This is a test app, so we start the loop directly
+print(lgi.GObject.object_ref,error)
 local main_loop = GLib.MainLoop()
 main_loop.run(main_loop)
 
