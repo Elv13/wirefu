@@ -30,43 +30,6 @@ end]]
 --  LOGIC   --
 --------------
 
-
--- This table contain all the methods (by name)
-local methods = {
-  Frobate = function(integer)
-    print("Frobate",integer)
-    return "123123123",{[12]="234234",[13]="vxcxcvxcv"}
-  end,
-  Barify = function(dict,int)
-    print("Barify",dict.werwer,int)
-    return 12
-  end,
-  Bazify = function()
-    print("Bazify")
-  end,
-  Mogrify = function()
-    print("Mogrify")
-  end,
-}
-
-local barVal = "foo"
-
--- This table contain all peoperties getter
-local property_get = {
-    Bar = function()
-        return barVal
-    end
-}
-
--- This table contain all peoperties setter
-
-local property_set = {
-    Bar = function(value)
-        barVal = value
-    end
-}
-
-
 -- Get the interface_info from its name
 local ifaces = {}
 local function iface_lookup(service,name)
@@ -135,8 +98,75 @@ end
 -----------------------
 
 local function register_object(service,name)
-    local function on_conn_aquired(conn,name)
-        
+    --------------
+    -- CLOSURES --
+    --------------
+
+
+    -- Called when a remote method is called
+    -- This closure dispatch the calls to the right function
+    local method_call_guard, method_call_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc ,
+    function(conn, sender, path, interface_name,method_name,parameters,invok)
+        -- Only call if the method have been defined
+        if service[method_name] then
+            local rets = {service[method_name](service,unpack(parameters.value))}
+            local out_sig = service:get_out_signature(interface_name,method_name)
+
+            local gvar = GLib.Variant(out_sig,rets)
+            Gio.DBusMethodInvocation.return_value(invok,gvar)
+        else
+            print("Trying to call "..method_name..[=[ but no implementation was found\n
+                please implement myService:]=]..method_name.."(arg1,arg2)")
+        end
+    end)
+
+    -- Called when there is a property request (get the current value)
+    local property_get_guard, property_get_addr = core.marshal.callback(Gio.DBusInterfaceGetPropertyFunc , 
+    function(conn, sender, path, interface_name,property_name,parameters,error)
+        local sig = service:get_property_info(interface_name,property_name).signature
+        print("I get here")
+        if service.properties["get_"..property_name] then
+            return GLib.Variant(sig,service.properties["get_"..property_name](service))
+        else
+            print("Trying to read "..property_name..[=[ but no getter was found\n
+                please implement myService.properties.get_]=]..property_name)
+        end
+        return GLib.Variant(sig)
+    end)
+
+    -- Called when there is a property request (set the current value)
+    local property_set_guard, property_set_addr = core.marshal.callback(Gio.DBusInterfaceSetPropertyFunc , 
+    function(conn, sender, path, interface_name,method_name,parameters)
+        print("Set a property")
+    end)
+
+    local function on_conn_aquired(conn,iname)
+        service.introspection_data = Gio.DBusNodeInfo.new_for_xml(service.xml)
+        print("The bus is aquired!")
+        local iface_info = iface_lookup(service,service.iname)
+
+        --introspection_data
+        conn:register_object (
+            name,
+            iface_info,
+            Gio.DBusInterfaceVTable({
+            method_call   = method_call_addr ,
+            get_property  = property_get_addr,
+            set_property  = property_get_addr,
+            }),
+            {},  --/* user_data */
+            lgi.GObject.Closure(function()
+            print("Closing the object")
+            end),  --/* user_data_free_func */
+            lgi.GObject.Closure(function()
+            print("There was an error")
+            end)
+        )
+    end
+    if service.conn then
+        on_conn_aquired(service.conn,service.iname)
+    else
+        service.on_connection_aquired = on_conn_aquired
     end
 end
 
@@ -157,41 +187,9 @@ function module.create_service(iname,xml_introspection)
         get_method_info   = get_method_info,
         common_get_info   = common_get_info,
         iface_lookup      = iface_lookup,
+        register_object   = register_object,
+        xml               = xml_introspection
     }
-
-    --------------
-    -- CLOSURES --
-    --------------
-
-
-    -- Called when a remote method is called
-    -- This closure dispatch the calls to the right function
-    local method_call_guard, method_call_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc ,
-    function(conn, sender, path, interface_name,method_name,parameters,invok)
-        if methods[method_name] then
-            local rets = {methods[method_name](unpack(parameters.value))}
-            local out_sig = service:get_out_signature(interface_name,method_name)
-
-            local gvar = GLib.Variant(out_sig,rets)
-            Gio.DBusMethodInvocation.return_value(invok,gvar)
-        end
-    end)
-
-    -- Called when there is a property request (get the current value)
-    local property_get_guard, property_get_addr = core.marshal.callback(Gio.DBusInterfaceGetPropertyFunc , 
-    function(conn, sender, path, interface_name,property_name,parameters,error)
-        local sig = service:get_property_info(interface_name,property_name).signature
-        if property_get[property_name] then
-            return GLib.Variant(sig,property_get[property_name]())
-        end
-        return GLib.Variant(sig)
-    end)
-
-    -- Called when there is a property request (set the current value)
-    local property_set_guard, property_set_addr = core.marshal.callback(Gio.DBusInterfaceSetPropertyFunc , 
-    function(conn, sender, path, interface_name,method_name,parameters)
-        print("Set a property")
-    end)
 
     print("attempting to create a server")
     -- Called when the bus is aquired, it is used to register the
@@ -202,27 +200,6 @@ function module.create_service(iname,xml_introspection)
             service.on_connection_aquired(conn,name)
             service.on_connection_aquired = nil
         end
-        service.introspection_data = Gio.DBusNodeInfo.new_for_xml(xml_introspection)
-        print("The bus is aquired!")
-        local iface_info = iface_lookup(service,iname)
-
-        --introspection_data
-        local registration_id,vat = conn:register_object (
-            "/com/example/SampleInterface/Test",
-            iface_info,
-            Gio.DBusInterfaceVTable({
-            method_call   = method_call_addr ,
-            get_property  = property_get_addr,
-            set_property  = property_get_addr,
-            }),
-            {},  --/* user_data */
-            lgi.GObject.Closure(function()
-            print("Closing the object")
-            end),  --/* user_data_free_func */
-            lgi.GObject.Closure(function()
-            print("There was an error")
-            end)
-        )
     end)
 
     -- Called when the name is aquired
@@ -245,6 +222,7 @@ function module.create_service(iname,xml_introspection)
     name_lost                                -- Called when the name is lost
     --Errors handling is not implemented
     )
+    return service
 end
 
 
@@ -281,14 +259,38 @@ local service = module.create_service("com.example.SampleInterface",[=[ <!DOCTYP
       <arg name='new_value' type='b'/>
     </signal>
     <property name='Bar' type='s' access='readwrite'/>
+    <property name='Bar2' type='s' access='write'/>
   </interface>
   <node name='child_of_sample_object'/>
   <node name='another_child_of_sample_object'/>
 </node>]=])
 
 
+function service:Frobate(integer)
+    print("Frobate",integer)
+    return "123123123",{[12]="234234",[13]="vxcxcvxcv"}
+end
 
+function service:Barify(dict,int)
+    print("Barify",dict.werwer,int)
+    return 12
+end
 
+function service:Bazify ()
+    print("Bazify")
+end
+
+function service:Mogrify()
+    print("Mogrify")
+end
+
+function service.properties.get_Bar(service)
+    print("property getter!")
+    return "foo"
+end
+
+service:register_object("/com/example/SampleInterface/Test")
+-- service:register_object("/com/example/SampleInterface/Test2")
 
 
 --TODO check if a mainloop and running or start one
