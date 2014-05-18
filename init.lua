@@ -15,17 +15,6 @@ local core = require     'lgi.core'
 local GLib = lgi.require 'GLib'
 local type,unpack = type,unpack
 
-
---------------
---  OBJECT  --
---------------
---[[
-local function create_object()
-    local obj = {}
-    
-    return obj
-end]]
-
 --------------
 --  LOGIC   --
 --------------
@@ -108,6 +97,7 @@ local function register_object(service,name)
     local method_call_guard, method_call_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc ,
     function(conn, sender, path, interface_name,method_name,parameters,invok)
         -- Only call if the method have been defined
+        print("I get here2")
         if service[method_name] then
             local rets = {service[method_name](service,unpack(parameters.value))}
             local out_sig = service:get_out_signature(interface_name,method_name)
@@ -123,8 +113,8 @@ local function register_object(service,name)
     -- Called when there is a property request (get the current value)
     local property_get_guard, property_get_addr = core.marshal.callback(Gio.DBusInterfaceGetPropertyFunc , 
     function(conn, sender, path, interface_name,property_name,parameters,error)
-        local sig = service:get_property_info(interface_name,property_name).signature
         print("I get here")
+        local sig = service:get_property_info(interface_name,property_name).signature
         if service.properties["get_"..property_name] then
             return GLib.Variant(sig,service.properties["get_"..property_name](service))
         else
@@ -156,10 +146,10 @@ local function register_object(service,name)
             }),
             {},  --/* user_data */
             lgi.GObject.Closure(function()
-            print("Closing the object")
+                print("Closing the object")
             end),  --/* user_data_free_func */
             lgi.GObject.Closure(function()
-            print("There was an error")
+                print("There was an error")
             end)
         )
     end
@@ -216,7 +206,7 @@ function module.create_service(iname,xml_introspection)
     -- First, aquire the Session bus
     local owner_id = Gio.bus_own_name(Gio.BusType.SESSION,
     iname,                                   --Interface name
-    Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT, --We want to take control of the existing service
+    Gio.BusNameOwnerFlags.REPLACE, --We want to take control of the existing service
     bus_aquired,                             --Called when the bus is aquired
     name_aquired,                            -- Called when the name is aquired
     name_lost                                -- Called when the name is lost
@@ -224,73 +214,6 @@ function module.create_service(iname,xml_introspection)
     )
     return service
 end
-
-
-
-
-
-
-
-
--- Test
-local service = module.create_service("com.example.SampleInterface",[=[ <!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
-  'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
-<node name='/com/example/sample_object'>
-  <interface name='com.example.SampleInterface'>
-    <method name='Frobate'>
-      <arg name='foo' type='i' direction='in'/>
-      <arg name='bar' type='s' direction='out'/>
-      <arg name='baz' type='a{us}' direction='out'/>
-      <!--<annotation name='org.freedesktop.DBus.Deprecated' value='true'/>'-->
-    </method>
-    <method name='Bazify'>
-      <arg name='bar' type='(iiu)' direction='in'/>
-      <arg name='bar' type='v' direction='out'/>
-    </method>
-    <method name='Barify'>
-      <arg name='bar' type='a{ss}' direction='in'/>
-      <arg name='foo' type='i' direction='in'/>
-      <arg name='bar' type='i' direction='out'/>
-    </method>
-    <method name='Mogrify'>
-      <arg name='bar' type='(iiav)' direction='in'/>
-    </method>
-    <signal name='Changed'>
-      <arg name='new_value' type='b'/>
-    </signal>
-    <property name='Bar' type='s' access='readwrite'/>
-    <property name='Bar2' type='s' access='write'/>
-  </interface>
-  <node name='child_of_sample_object'/>
-  <node name='another_child_of_sample_object'/>
-</node>]=])
-
-
-function service:Frobate(integer)
-    print("Frobate",integer)
-    return "123123123",{[12]="234234",[13]="vxcxcvxcv"}
-end
-
-function service:Barify(dict,int)
-    print("Barify",dict.werwer,int)
-    return 12
-end
-
-function service:Bazify ()
-    print("Bazify")
-end
-
-function service:Mogrify()
-    print("Mogrify")
-end
-
-function service.properties.get_Bar(service)
-    print("property getter!")
-    return "foo"
-end
-
-service:register_object("/com/example/SampleInterface/Test")
--- service:register_object("/com/example/SampleInterface/Test2")
 
 
 --TODO check if a mainloop and running or start one
