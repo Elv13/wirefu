@@ -215,11 +215,47 @@ function module.create_service(iname,xml_introspection)
     return service
 end
 
+-------------------------------
+--  Name construction gears  --
+-------------------------------
 
---TODO check if a mainloop and running or start one
+local create_mt_from_name = nil
 
--- This is a test app, so we start the loop directly
-local main_loop = GLib.MainLoop()
-main_loop:run()
+local busses = {[Gio.BusType.SESSION]=nil,[Gio.BusType.SYSTEM]=nil}
+local function get_bus(bus_name)
+    local bus_type = ({SESSION=Gio.BusType.SESSION, SYSTEM=Gio.BusType.SYSTEM})[bus_name]
+    if not bus_type then
+        print("Unknown bus",bus_name)
+        return
+    end
+    if busses[bus_type] then
+        return busses[bus_type]
+    else
+        Gio.bus_get(Gio.BusType.SYSTEM,nil,function(b)
+            print("got",b)
+            busses[bus_type] = b
+        end)
+    end
+end
+
+local function idxf(t,k)
+    return create_mt_from_name(k,t)
+end
+
+local function callf(t,...)
+    print("call",t.__path)
+    local bus = get_bus("SESSION")
+end
+
+create_mt_from_name = function(name,parent)
+    local ret = {__name = name or "", __parent = parent, __path = (parent and parent.__path ~= "" and (parent.__path..".") or "") .. (name or ""),
+        __bus=parent and parent.__bus or nil}
+    return setmetatable(ret,{__index = idxf , __call = callf })
+end
+
+module.SESSION = create_mt_from_name(  )
+rawset(module.SESSION,"__bus",Gio.BusType.SESSION)
+module.SYSTEM  = create_mt_from_name(  )
+rawset(module.SYSTEM,"__bus",Gio.BusType.SYSTEM)
 
 return module
