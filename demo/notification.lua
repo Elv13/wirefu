@@ -1,4 +1,6 @@
+local lgi  = require     'lgi'
 local wirefu = require("wirefu")
+local GLib = lgi.require 'GLib'
 
 -- Test
 local service = wirefu.create_service("org.freedesktop.Notifications",[=[<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object
@@ -72,3 +74,8 @@ function service.properties.get_Bar(service)
 end
 
 service:register_object("/org/freedesktop/Notifications")
+
+
+-- This is a test app, so we start the loop directly
+local main_loop = GLib.MainLoop()
+main_loop:run()
