@@ -9,10 +9,11 @@
 -- add way to call methods after getting a service object
 -- handle signals myservice:connect_signal("foo",function(43534,345) end)
 
-local lgi  = require     'lgi'
-local Gio  = lgi.require 'Gio'
-local core = require     'lgi.core'
-local GLib = lgi.require 'GLib'
+local lgi    = require     'lgi'
+local Gio    = lgi.require 'Gio'
+local core   = require     'lgi.core'
+local GLib   = lgi.require 'GLib'
+local client = require("client")
 local type,unpack = type,unpack
 
 --------------
@@ -219,148 +220,20 @@ end
 --  Name construction gears  --
 -------------------------------
 
-local create_mt_from_name = nil
 
-local busses,bus_queue = {},{[Gio.BusType.SESSION]={},[Gio.BusType.SYSTEM]={}}
-local function get_bus(bus_name)
---     local bus_type = ({SESSION=Gio.BusType.SESSION, SYSTEM=Gio.BusType.SYSTEM})[bus_name]
---     if not bus_type then
---         print("Unknown bus",bus_name)
---         return
---     end
-    if bus_name ~= 1 and bus_name ~= 2 then
-        print("Unknown bus",bus_name)
-        return
-    end
-    if busses[bus_name] then
-        return busses[bus_name]
-    else
-        --I have no idea why this part doesn't work, I will use the sync version for now
---         local bus_get_guard, bus_get_addr = core.marshal.callback(Gio.AsyncReadyCallback ,function(b,a,s)
---             print("got",b,a,s)
---             busses[bus_name] = a
---             for k,v in ipairs( bus_queue[bus_name]) do
---                 v(a)
---             end
---         end)
---         Gio.bus_get(bus_name,nil,bus_get_addr)
-        local bus = Gio.bus_get_sync(bus_name) --TODO use get async
---         print("bob",bus,Gio.call)
-        busses[bus_name] = bus
-        return bus
-    end
-end
+-- local function get_connection(path)
+--     g_dbus_connection_new_for_address ()
+-- end
 
-local function idxf(t,k)
-    return create_mt_from_name(k,t)
-end
 
-local function callf(t,callback,error_callback)
-    local service_path = t.__servicepath
-    local pathname     = t.__pathname
-    local args         = t.__args
-    local object_path  = service_path --TODO extract the right info
-    local method_name  = t.__parent.__name
-    print("Calling:",service_path,pathname,object_path, method_name)
-    local bus = get_bus(t.__bus)
-    if not bus then
-        bus_queue[t.__bus][#bus_queue[t.__bus]+1] = function(b)
-            local o = b:get_object(t.__path)
-            --TODO implement bus_queue callback
-        end
-    else
---         print("alice",bus,bus.call_sync)
---         bus:call_sync("org.freedesktop.UPower","/org/freedesktop/UPower","org.freedesktop.UPower","HibernateAllowed",GLib.Variant(""))
-        local ret,err = bus:call(
-            service_path,
-            pathname,
-            object_path,
-            method_name,
-            nil,
-            nil,
-            Gio.DBusConnectionFlags.NONE,
-            -1, -- Timeout
-            nil, -- Cancellable
-            function(conn,res,a,b,c)
-                local ret, err = bus:call_finish(res)
---                 print("async",conn,Gio.SimpleAsyncResult.get_op_res_gpointer,res:get_op_res_gssize(),
--- 		"sdfsdf ",a,b,c)
-                if callback then
-                    callback(unpack(ret.value))
-                elseif error_callback then
-                    error_callback(err)
-                end
-            end
-        )
-        if (not ret) and err and error_callback then
-            error_callback(err)
-        end
---         print("ret",ret and ret.value[1],err)
---         local bus = Gio.bus_get_sync(Gio.BusType.SESSION)
---         local list = bus.list_names()
---         print("start list name",list)
---         local o = bus:get_object(t.__path)
---         print("HERE",o)
-        return {
-            get = function(f)
-                callback = f
-            end
-        }
-    end
-end
-
-create_mt_from_name = function(name,parent)
-    local ret = {
-        __name        = name or "",
-        __parent      = parent,
-        __path        = (parent and parent.__path ~= "" and (parent.__path..".") or "") .. (name or ""),
-        __bus         = parent and parent.__bus or nil,
-        __pathname    = parent and rawget(parent,"__pathname"),
-        __args        = parent and rawget(parent,"__args"),
-        __objectpath  = parent and rawget(parent,"__objectpath"),
-        __servicepath = parent and rawget(parent,"__servicepath"),
-    }
-    if parent then
-        rawset(parent,"__next",ret)
-    end
-    return setmetatable(ret,{__index = idxf , __call = function(self,name,...)
-        -- When :get() is used, then call
-        if ret.__name == "get" then
-            return callf(self,...)
-        else
-            -- Set a pathname
-            if (not rawget(ret,"__pathname")) and type(name) == "string" then
-                rawset(ret,"__servicepath",ret.__path)
-                rawset(ret,"__pathname",name)
-            else
-                rawset(ret,"__objectpath",ret.__path)
-                rawset(ret,"__args",{name,...})
-            end
---             print("SETTING NAME?",self,aa,ret,ret.__name,ret.__path,ret.__next,bb)
-            return self
-        end
-    end})
-end
-
-module.SESSION = create_mt_from_name(  )
+module.SESSION = client.create_mt_from_name(  )
 rawset(module.SESSION,"__bus",Gio.BusType.SESSION)
-module.SYSTEM  = create_mt_from_name(  )
+module.SYSTEM  = client.create_mt_from_name(  )
 rawset(module.SYSTEM,"__bus",Gio.BusType.SYSTEM)
 
-
--- local gio = require("lgi").Gio
--- local bus = get_bus(Gio.BusType.SYSTEM)
--- print("BUS",bus)
--- gio.Async.call(function()
---     print(bus:async_call(
---         'org.freedesktop.UPower',
---         '/org/freedesktop/UPower',
---         'org.freedesktop.UPower',
---         'HibernateAllowed',
---         nil,
---         nil,
---         'NONE',
---         -1))
--- end)()
+-- local list = get_bus(module.SESSION.__bus).list_names()
+-- for k,v in pairs(list) do
+--     print("names",k,v)
+-- end
 
 return module

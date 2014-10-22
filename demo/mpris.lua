@@ -2,7 +2,9 @@ local lgi  = require     'lgi'
 local wirefu = require("wirefu")
 local GLib = lgi.require 'GLib'
 
-wirefu.SYSTEM.org.freedesktop.UPower("/org/freedesktop/UPower").HibernateAllowed():get(function (work)
+--TODO list all mpris providers
+
+wirefu.SESSION.org.mpris.MediaPlayer2.amarok("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.Player.Pause():get(function (work)
     print("It worked:",work)
 end)
 print("async")
