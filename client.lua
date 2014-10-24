@@ -7,11 +7,18 @@ local type,unpack = type,unpack
 
 local module = {}
 
-local pending_calls = {}
-local proxies       = {}
+local pending = { calls = {}, properties = {} }
+local proxies = {}
+local proxy_connect = {}
 
 local load_proxy -- Declare method
 
+--TODO :alias() to get the object
+--properties
+--signals
+--wildcard service check
+--gained/lost
+-- xcvxcvxcvx()
 
 -- Use the introspection data to extract the method signature
 local function get_in_args(info,method_name,error_callback)
@@ -34,6 +41,13 @@ end
 -- GDbus require the arguments to be packet into a gvar-tuple
 local function format_arguments(method_name,info,args,error_callback)
     local method_def = get_in_args(info,method_name,error_callback)
+    if #method_def ~= #args then
+        if error_callback then
+            error_callback("WARNING, invalid argument count, expected "..#method_def..", got "..#args)
+        else
+            print("WARNING, invalid argument count, expected "..#method_def..", got "..#args)
+        end
+    end
     local argsg = {}
     for k,v in ipairs(method_def) do
         argsg[#argsg+1] = GLib.Variant(v,args[k])
@@ -44,10 +58,10 @@ end
 -- Queue calls until proxies are loaded
 local function add_pending_call(service_path,pathname,object_path,method_name,args,error_callback,callback)
     local hash = service_path..pathname..object_path
-    local queue = pending_calls[hash]
+    local queue = pending.calls[hash]
     if not queue then
        queue = {}
-       pending_calls[hash] = queue
+       pending.calls[hash] = queue
     end
     queue[#queue+1] = {
         method         = method_name   ,
@@ -58,21 +72,45 @@ local function add_pending_call(service_path,pathname,object_path,method_name,ar
     return queue
 end
 
-local function call_with_proxy(bus,service_path,pathname,object_path,method_name,args,proxy,error_callback,callback)
+--TODO merge with above
+local function add_pending_property(service_path,pathname,object_path,property_name,error_callback,callback)
+    local hash = service_path..pathname..object_path
+    local queue = pending.properties[hash]
+        if not queue then
+       queue = {}
+       pending.properties[hash] = queue
+    end
+    queue[#queue+1] = {
+        method         = property_name ,
+        callback       = callback      ,
+        error_callback = error_callback,
+    }
+end
+
+local function init_proxy(bus,service_path,pathname,object_path,error_callback)
     local hash = service_path..pathname..object_path
     local proxy = proxies[hash]
+
+    -- Set a dummy value to avoid the proxy being inited more than once
+    proxies[hash] = true -- Don't init twice
+
+
+    -- This need to be called only once
+    if not proxy then
+        load_proxy(bus,service_path,pathname,object_path,error_callback)
+    end
+end
+
+local function call_with_proxy(bus,service_path,pathname,object_path,method_name,args,proxy,error_callback,callback)
+    local hash = service_path..pathname..object_path
+    local proxy = proxy or proxies[hash]
     if not proxy or type(proxy) == "boolean" then
 
         -- The proxy is not ready, add to queue --TODO this leak if there is an error
         add_pending_call(service_path,pathname,object_path,method_name,args,error_callback,callback)
 
-        -- Set a dummy value to avoid the proxy being inited more than once
-        proxies[hash] = true -- Don't init twice
-
-        -- This need to be called only once
-        if not proxy then
-            load_proxy(bus,service_path,pathname,object_path,error_callback)
-        end
+        -- Start the proxy
+        init_proxy(bus,service_path,pathname,object_path,error_callback)
 
     else
 
@@ -102,16 +140,80 @@ local function call_with_proxy(bus,service_path,pathname,object_path,method_name
     end
 end
 
+-- Get a property and call the callback
+local function get_property_with_proxy(bus,service_path,pathname,object_path,property_name,args,proxy,error_callback,callback)
+    --TODO use introspection to check if it exist
+    local hash = service_path..pathname..object_path
+    local proxy = proxies[hash]
+    if not proxy or type(proxy) == "boolean" then
+        add_pending_property(service_path,pathname,object_path,property_name,error_callback,callback)
+
+        init_proxy(bus,service_path,pathname,object_path,error_callback)
+    else
+        local prop = proxy:get_cached_property(property_name)
+        if prop then
+            callback(prop.value)
+        else
+            if error_callback then
+                error_callback(property_name.. " not found")
+            else
+                print(property_name.. " not found")
+            end
+        end
+    end
+end
+
+-- Watch singals and properties changes
+local function watch_signals(proxy,hash)
+    local conn = proxy_connect[hash]
+    if not conn then
+        conn = {}
+        proxy_connect[proxy] = conn
+    end
+
+    -- Watch generic property change then add filter
+    proxy["on_".."g-properties-changed"]:connect(function(p,changed,invalidated)
+        if changed and changed:n_children() >= 1 then
+            local tuple = changed:get_child_value(0).value
+            local prop,value = unpack(tuple)
+            local callbacks = conn[prop]
+            if callbacks then
+                for k,v in ipairs(callbacks) do
+                    v(value.value)
+                end
+            end
+        end
+    end)
+
+    -- Connect to signals
+    proxy["on_".."g-signal"]:connect(function(p,sender_name,signal_name,parameters)
+        local callbacks = conn[signal_name]
+        if callbacks then
+            for k,v in ipairs(callbacks) do
+                v(unpack(parameters.value))
+            end
+        end
+    end)
+end
+
 -- Execute everything in the queue
 local function proxy_ready(bus,service_path,pathname,object_path,proxy)
     local hash = service_path..pathname..object_path
-    local queue = pending_calls[hash]
-    if queue then
-        for k,v in ipairs(queue) do
-            call_with_proxy(bus,service_path,pathname,object_path,v.method,v.args,proxy,v.error_callback,v.callback)
+    for k2,v2 in ipairs {"calls","properties"} do
+        local queue = pending[v2][hash]
+        if queue then
+            for k,v in ipairs(queue) do
+                print("foo",#queue)
+                if v.args then --TODO dont
+                    call_with_proxy(bus,service_path,pathname,object_path,v.method,v.args,proxy,v.error_callback,v.callback)
+                else
+                    get_property_with_proxy(bus,service_path,pathname,object_path,v.method,v.args,proxy,v.error_callback,v.callback)
+                end
+            end
+            pending[v2][hash] = nil
         end
-        queue = {}
     end
+    watch_signals(proxy,hash)
 end
 
 -- Create a proxy client with all necessary introspection
@@ -148,11 +250,11 @@ load_proxy = function(bus,service_path,pathname,object_path,error_callback)
                 Gio.DBusConnectionFlags.NONE         ,
                 -1                                   , -- Timeout
                 nil                                  , -- Cancellable
-                function(conn,res,a,b,c)
+                function(conn,res)
                     local ret1, err1 = bus:call_finish(res)
                     if not err1 then
                         -- Ok, lets load the introspection
-                        local ifaceinfo = Gio.DBusNodeInfo.new_for_xml(ret1.value[1]):lookup_interface(object_path)
+                        local ifaceinfo,err2 = Gio.DBusNodeInfo.new_for_xml(ret1.value[1]):lookup_interface(object_path)
 
                         proxy:set_interface_info(ifaceinfo)
                         proxies[service_path..pathname..object_path] = proxy
@@ -168,6 +270,19 @@ load_proxy = function(bus,service_path,pathname,object_path,error_callback)
     )
 end
 
+local function register_connect_callback(service_path,pathname,object_path,method_name,callback)
+    local hash = service_path..pathname..object_path
+    local conn = proxy_connect[hash]
+    if not conn then
+        conn = {}
+        proxy_connect[hash] = conn
+    end
+    if not conn[method_name] then
+        conn[method_name] = {}
+    end
+    conn[method_name][#conn[method_name]+1] = callback
+end
+
 -- Simple function to get the parameters out of the magic table
 local function callf(t,callback,error_callback)
     local service_path = t.__servicepath
@@ -176,8 +291,16 @@ local function callf(t,callback,error_callback)
     local object_path  = t.__objectpath --TODO extract the right info
     local method_name  = t.__parent.__name
     local bus          = common.get_bus(t.__bus)
+    local is_prop      = t.__is_property
+    local is_connect   = t.__is_connect
 
-    return call_with_proxy(bus,service_path,pathname,object_path,method_name,args,proxy,error_callback,callback)
+    if is_connect then
+        return register_connect_callback(service_path,pathname,object_path,method_name,callback)
+    elseif is_prop then
+        return get_property_with_proxy(bus,service_path,pathname,object_path,method_name,args,proxy,error_callback,callback)
+    else
+        return call_with_proxy(bus,service_path,pathname,object_path,method_name,args,proxy,error_callback,callback)
+    end
 
         --TODO this probably wont be that hard to get async
 --         print("ret",ret and ret.value[1],err)
@@ -207,7 +330,15 @@ module.create_mt_from_name = function(name,parent)
     end
     return setmetatable(ret,{__index = function(t,k) return module.create_mt_from_name(k,t) end , __call = function(self,name,...)
         -- When :get() is used, then call
-        if ret.__name == "get" then
+        if ret.__name == "get" or ret.__name == "connect" then
+
+            -- Property calls don't have the extra `()`, so it need to be set here
+            if not rawget(ret,"__objectpath") then
+                rawset(ret,"__is_property",true)
+                rawset(ret,"__objectpath",parent.__prevpath)
+            end
+            rawset(ret,"__is_connect",ret.__name == "connect")
+
             return callf(self,...)
         else
             -- Set a pathname
