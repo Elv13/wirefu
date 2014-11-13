@@ -98,13 +98,15 @@ local function register_object(service,name)
     local method_call_guard, method_call_addr = core.marshal.callback(Gio.DBusInterfaceMethodCallFunc ,
     function(conn, sender, path, interface_name,method_name,parameters,invok)
         -- Only call if the method have been defined
-        print("I get here2")
+        print("\n\n\nI get here2",method_name)
         if service[method_name] then
             local rets = {service[method_name](service,unpack(parameters.value))}
             local out_sig = service:get_out_signature(interface_name,method_name)
 
             local gvar = GLib.Variant(out_sig,rets)
+            print("CCCCC",invok,out_sig,unpack(rets))
             Gio.DBusMethodInvocation.return_value(invok,gvar)
+            print("RET\n\n\n")
         else
             print("Trying to call "..method_name..[=[ but no implementation was found\n
                 please implement myService:]=]..method_name.."(arg1,arg2)")

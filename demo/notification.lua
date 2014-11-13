@@ -59,7 +59,7 @@ function service:CloseNotification()
 end
 
 function service:GetServerInfo()
-    return "naughty", "awesome", "3.5.2"--awesome.version:match("%d.%d")
+    return "naughty", "awesome", "3.5.5"--awesome.version:match("%d.%d")
 end
 
 

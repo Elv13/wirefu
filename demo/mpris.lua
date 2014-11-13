@@ -4,9 +4,9 @@ local GLib = lgi.require 'GLib'
 
 --TODO list all mpris providers
 
--- wirefu.SESSION.org.mpris.MediaPlayer2.amarok("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.Player.Pause():get(function (work)
---     print("It worked:",work)
--- end)
+wirefu.SESSION.org.mpris.MediaPlayer2.amarok("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.Player.Pause():get(function (work)
+    print("It worked:",work)
+end)
 -- 
 -- wirefu.SESSION.org["kate-editor"]["kwrite-12808"]("/Kate/Document/1").org.kde.KTextEditor.Document.lines():get(function (work)
 --     print("It worked lines:",work)
@@ -44,7 +44,6 @@ player.Metadata:get(function(data)
         end
     end)
 end)
-print("async")
 
 wirefu.SESSION.org.mpris.MediaPlayer2.vlc("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.TrackList.GetTracksMetadata():get(function (work)
     print("It worked:",work)
