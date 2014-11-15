@@ -132,6 +132,7 @@ end
 
 -- Get a property and call the callback
 function module.get_property_with_proxy(bus,service_path,pathname,object_path,property_name,args,proxy,error_callback,callback)
+
     --TODO use introspection to check if it exist
     local hash  = service_path..pathname..object_path
     local proxy = proxies[hash]
@@ -177,7 +178,7 @@ function module.call_with_proxy(bus,service_path,pathname,object_path,method_nam
                 if not err1 then
                     --Done
                     if callback then
-                        callback(unpack(ret1.value))
+                        callback(ret1[1].value)
                     end
                 else
                     error_handler(err1,error_callback)
