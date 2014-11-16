@@ -1,9 +1,9 @@
 local lgi           = require     'lgi'
 local Gio           = lgi.require 'Gio'
 local GLib          = lgi.require 'GLib'
-local common        = require "common"
-local introspection = require "introspection"
-local proxy2        = require "proxy"
+local common        = require "wirefu.common"
+local introspection = require "wirefu.introspection"
+local proxy2        = require "wirefu.proxy"
 local type,unpack = type,unpack
 
 local module = {}
@@ -29,7 +29,7 @@ local function callf(t,callback,error_callback)
     local is_prop      = t.__is_property
     local is_connect   = t.__is_connect
 
-    print("BAR",method_name,is_connect,is_prop)
+    --print("BAR",method_name,"connect:",is_connect,"property:",is_prop)
     if is_connect then
         return proxy2.register_connect_callback(bus,service_path,pathname,object_path,method_name,callback)
     elseif is_prop then
