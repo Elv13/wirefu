@@ -13,7 +13,7 @@ local lgi    = require     'lgi'
 local Gio    = lgi.require 'Gio'
 local core   = require     'lgi.core'
 local GLib   = lgi.require 'GLib'
-local client = require("client")
+local client = require("wirefu.client")
 local type,unpack = type,unpack
 
 --------------

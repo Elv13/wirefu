@@ -2,7 +2,7 @@ local print         = print
 local lgi           = require     'lgi'
 local Gio           = lgi.require 'Gio'
 local GLib          = lgi.require 'GLib'
-local common        = require "common"
+local common        = require "wirefu.common"
 
 
 local pending,proxies,proxy_connect = { calls = {}, properties = {} },{},{}
