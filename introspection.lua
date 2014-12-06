@@ -13,10 +13,9 @@ local watch_started = false
 local function init_buses()
     client = require("wirefu.client")
     wirefu = require("wirefu")
-    print("INI")
     busses = {
+        wirefu.SYSTEM.org.freedesktop.DBus("/org/freedesktop/DBus").org.freedesktop.DBus,
         wirefu.SESSION.org.freedesktop.DBus("/org/freedesktop/DBus").org.freedesktop.DBus,
-        wirefu.SYSTEM.org.freedesktop.DBus("/org/freedesktop/DBus").org.freedesktop.DBus
     }
 end
 
@@ -24,6 +23,7 @@ end
 local function get_callbacks(name)
     local ret = nil
     for k,v in pairs(watched) do
+        print(name,k)
         if name:match(k) then
             if not ret then
                 ret = v
@@ -81,7 +81,7 @@ end
 -- the service name as second and a boolean if the service is gained
 -- or lost as third.
 function module.watch(bus,name,callback)
-
+print("watch",bus,name,callback)
     if not watch_started then
         init_watch(bus.__bus)
     end

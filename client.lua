@@ -73,12 +73,11 @@ module.create_mt_from_name = function(name,parent)
         -- When :get() is used, then call
 
         if not rawget(rawget(ret,"__parent"),"__parent") and top_level_function[ret.__name] then
-            top_level_function[ret.__name](ret,name,...)
+            top_level_function[ret.__name](ret,...)
         elseif reserved_names[ret.__name] then
 
             -- Property calls don't have the extra `()`, so it need to be set here
             if not rawget(ret,"__objectpath") then
-                print("HEEEEEEEE",parent.__prevpath)
                 rawset(ret,"__is_property",true)
                 rawset(ret,"__objectpath",parent.__prevpath)
             end

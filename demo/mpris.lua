@@ -7,18 +7,6 @@ local GLib = lgi.require 'GLib'
 wirefu.SESSION.org.mpris.MediaPlayer2.amarok("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.Player.Pause():get(function (work)
     print("It worked:",work)
 end)
--- 
--- wirefu.SESSION.org["kate-editor"]["kwrite-12808"]("/Kate/Document/1").org.kde.KTextEditor.Document.lines():get(function (work)
---     print("It worked lines:",work)
--- end)
--- 
--- wirefu.SESSION.org["kate-editor"]["kwrite-12808"]("/Kate/Document/1").org.kde.KTextEditor.Document.insertLine(1,"sdfsdfsdf"):get(function (work)
---     print("It worked:",work)
--- end)
-
--- wirefu.SESSION.org.mpris.MediaPlayer2.vlc("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.TrackList.GetTracksMetadata():get(function (work)
---     print("It worked:",work)
--- end)
 
 local alias = wirefu.SESSION.org.mpris.MediaPlayer2.vlc("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.TrackList
 
@@ -47,6 +35,19 @@ end)
 
 wirefu.SESSION.org.mpris.MediaPlayer2.vlc("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.TrackList.GetTracksMetadata():get(function (work)
     print("It worked:",work)
+end)
+
+wirefu.SESSION:watch(".mpris.",function(service,name)
+    print("New mpris service!!",name)
+
+    local timer = GLib.Timer()
+    while timer:elapsed() < 3 do
+        -- Freeze
+    end
+
+    service("/org/mpris/MediaPlayer2").org.mpris.MediaPlayer2.Player.Pause():get(function (work)
+        print(name, "Paused")
+    end)
 end)
 
 
