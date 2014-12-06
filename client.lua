@@ -48,13 +48,17 @@ local reserved_names = {
     introspect_annotations = introspection.annotations,
 }
 
+local top_level_function = {
+    watch = introspection.watch
+}
+
 -- This recursive method turn a lua table into all required dbus paths
 module.create_mt_from_name = function(name,parent)
     local ret = {
         __name        = name or ""                                                                     ,
         __parent      = parent                                                                         ,
         __prevpath    = parent and rawget(parent,"__path")                                             ,
-        __path        = (parent and parent.__path ~= "" and (parent.__path..".") or "") .. (name or ""),
+        __path        = (parent and parent.__path ~= "" and (parent.__path.. (name and "." or "")) or "") .. (name or ""),
         __bus         = parent and parent.__bus or nil                                                 ,
         __pathname    = parent and rawget(parent,"__pathname")                                         ,
         __args        = parent and rawget(parent,"__args")                                             ,
@@ -67,10 +71,14 @@ module.create_mt_from_name = function(name,parent)
     end
     return setmetatable(ret,{__index = function(t,k) return module.create_mt_from_name(k,t) end , __call = function(self,name,...)
         -- When :get() is used, then call
-        if reserved_names[ret.__name] then
+
+        if not rawget(rawget(ret,"__parent"),"__parent") and top_level_function[ret.__name] then
+            top_level_function[ret.__name](ret,name,...)
+        elseif reserved_names[ret.__name] then
 
             -- Property calls don't have the extra `()`, so it need to be set here
             if not rawget(ret,"__objectpath") then
+                print("HEEEEEEEE",parent.__prevpath)
                 rawset(ret,"__is_property",true)
                 rawset(ret,"__objectpath",parent.__prevpath)
             end
