@@ -5,7 +5,7 @@ local GLib          = lgi.require 'GLib'
 local common        = require "wirefu.common"
 
 
-local pending,proxies,proxy_connect = { calls = {}, properties = {} },{},{}
+local pending,proxies,proxy_connect = { calls = {}, properties = {}, introspect_methods = {} },{},{}
 
 local module = {proxies=proxies,pending=pending}
 
@@ -188,10 +188,44 @@ function module.call_with_proxy(bus,service_path,pathname,object_path,method_nam
     end
 end
 
+-- Get all methods stored in an object_path
+function module.get_methods_with_proxy(bus,service_path,pathname,object_path,__,___,proxy,error_callback,callback)
+
+    local hash = service_path..pathname..object_path
+    local proxy = proxy or proxies[hash]
+
+    if not proxy or type(proxy) == "boolean" then
+
+        -- The proxy is not ready, add to queue --TODO this leak if there is an error
+        add_pending_call("introspect_methods",service_path,pathname,object_path,method_name,args,error_callback,callback)
+
+        -- Start the proxy
+        init_proxy(bus,service_path,pathname,object_path,error_callback)
+    else
+        local introspect = proxy:get_interface_info()
+        if not introspect then
+            error_handler(object_path.. " not found",error_callback)
+        end
+        introspect:cache_build()
+        local ret = {}
+
+        --TODO store names as keys and an info metatable as value
+        for k,v in ipairs(introspect.methods) do
+            ret[#ret+1] = v.name
+        end
+        callback(ret)
+    end
+end
+
 -- Execute everything in the queue
 local function proxy_ready(bus,service_path,pathname,object_path,proxy)
     local hash = service_path..pathname..object_path
-    for k2,v2 in pairs {calls=module.call_with_proxy,properties=module.get_property_with_proxy} do
+
+    for k2,v2 in pairs {
+        calls              = module.call_with_proxy,
+        properties         = module.get_property_with_proxy,
+        introspect_methods = module.get_methods_with_proxy,
+    } do
         local queue = pending[k2][hash]
         if queue then
             for k,v in ipairs(queue) do
