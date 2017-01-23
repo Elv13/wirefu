@@ -29,6 +29,11 @@ local function callf(t,callback,error_callback)
     local is_prop      = t.__is_property
     local is_connect   = t.__is_connect
 
+    -- 70% of the time there's equal, so don't force the user to type it twice
+    if object_path == "" then
+        object_path = service_path
+    end
+
     --print("BAR",method_name,"connect:",is_connect,"property:",is_prop)
     if is_connect then
         return proxy2.register_connect_callback(bus,service_path,pathname,object_path,method_name,callback)
