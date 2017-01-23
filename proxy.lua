@@ -3,6 +3,7 @@ local lgi           = require     'lgi'
 local Gio           = lgi.require 'Gio'
 local GLib          = lgi.require 'GLib'
 local common        = require "wirefu.common"
+local unpack = unpack or table.unpack -- luacheck: globals unpack (compatibility with Lua 5.1)
 
 
 local pending,proxies,proxy_connect = { calls = {}, properties = {}, introspect_methods = {} },{},{}

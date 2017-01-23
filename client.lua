@@ -4,7 +4,8 @@ local GLib          = lgi.require 'GLib'
 local common        = require "wirefu.common"
 local introspection = require "wirefu.introspection"
 local proxy2        = require "wirefu.proxy"
-local type,unpack = type,unpack
+local type = type
+local unpack = unpack or table.unpack -- luacheck: globals unpack (compatibility with Lua 5.1)
 
 local module = {}
 

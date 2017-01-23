@@ -14,7 +14,8 @@ local Gio    = lgi.require 'Gio'
 local core   = require     'lgi.core'
 local GLib   = lgi.require 'GLib'
 local client = require("wirefu.client")
-local type,unpack = type,unpack
+local type = type
+local unpack = unpack or table.unpack -- luacheck: globals unpack (compatibility with Lua 5.1)
 
 --------------
 --  LOGIC   --
